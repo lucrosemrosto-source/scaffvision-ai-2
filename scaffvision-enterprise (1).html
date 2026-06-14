@@ -1,0 +1,1276 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>ScaffVision AI — Enterprise</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Bebas+Neue&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<style>
+:root{
+  --bg:#060810;--surface:#0d1117;--surface2:#131920;--surface3:#1a2433;
+  --border:#1e2d3d;--border2:#253545;
+  --cyan:#00e5ff;--orange:#ff6d1f;--green:#00f59b;--red:#ff3d5a;--yellow:#ffd600;--purple:#a259ff;
+  --text:#e2eaf2;--text2:#7a94a8;--text3:#3d5468;
+  --font:'Space Grotesk',sans-serif;--mono:'JetBrains Mono',monospace;--display:'Bebas Neue',cursive;
+  --radius:6px;--glow-cyan:0 0 24px rgba(0,229,255,.25);--glow-orange:0 0 24px rgba(255,109,31,.25);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--font);background:var(--bg);color:var(--text);display:flex;flex-direction:column}
+
+/* Animated background */
+body::before{
+  content:'';position:fixed;inset:0;z-index:0;
+  background:
+    radial-gradient(ellipse 60% 40% at 10% 20%,rgba(0,229,255,.04) 0%,transparent 70%),
+    radial-gradient(ellipse 50% 50% at 90% 80%,rgba(255,109,31,.04) 0%,transparent 70%),
+    linear-gradient(rgba(0,229,255,.018) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,229,255,.018) 1px,transparent 1px);
+  background-size:auto,auto,32px 32px,32px 32px;
+  pointer-events:none;
+}
+
+/* ── TOPBAR ── */
+.topbar{
+  position:relative;z-index:50;
+  display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:24px;
+  padding:0 24px;height:56px;
+  background:rgba(6,8,16,.95);
+  border-bottom:1px solid var(--border);
+  backdrop-filter:blur(12px);flex-shrink:0;
+}
+.brand{display:flex;align-items:center;gap:10px}
+.brand-hex{
+  width:32px;height:32px;
+  background:linear-gradient(135deg,var(--cyan),#0090a8);
+  clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);
+  display:flex;align-items:center;justify-content:center;font-size:14px;
+  box-shadow:var(--glow-cyan);
+}
+.brand-name{font-family:var(--display);font-size:1.6rem;letter-spacing:3px;color:var(--cyan);line-height:1}
+.brand-tag{font-family:var(--mono);font-size:.58rem;color:var(--text3);letter-spacing:2px;margin-top:1px}
+
+/* Nav tabs */
+.nav{display:flex;gap:2px;background:var(--surface);border:1px solid var(--border);padding:3px;border-radius:var(--radius)}
+.nav-btn{
+  padding:5px 16px;border:none;background:transparent;
+  color:var(--text2);font-family:var(--font);font-size:.78rem;font-weight:500;
+  cursor:pointer;border-radius:4px;transition:all .18s;letter-spacing:.5px;
+  display:flex;align-items:center;gap:6px;white-space:nowrap;
+}
+.nav-btn:hover{color:var(--text)}
+.nav-btn.active{background:var(--surface3);color:var(--cyan);box-shadow:inset 0 0 0 1px var(--border2)}
+.nav-icon{font-size:.9rem}
+
+/* Status right */
+.topbar-right{display:flex;align-items:center;gap:12px}
+.live-badge{
+  display:flex;align-items:center;gap:6px;
+  font-family:var(--mono);font-size:.65rem;color:var(--text3);letter-spacing:1px;
+}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);transition:all .4s}
+.live-dot.on{background:var(--green);box-shadow:0 0 8px var(--green);animation:blink 1.8s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.model-chip{
+  font-family:var(--mono);font-size:.62rem;
+  background:var(--surface2);border:1px solid var(--border);
+  color:var(--cyan);padding:3px 8px;border-radius:20px;letter-spacing:1px;
+}
+
+/* ── LAYOUT ── */
+.app{position:relative;z-index:5;display:flex;flex:1;min-height:0}
+
+/* ── SIDEBAR ── */
+.sidebar{
+  width:280px;flex-shrink:0;
+  background:rgba(13,17,23,.98);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.sidebar-section{padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+.section-head{
+  font-family:var(--mono);font-size:.6rem;font-weight:700;
+  color:var(--text3);letter-spacing:3px;text-transform:uppercase;margin-bottom:10px;
+}
+
+/* Buttons */
+.btn{
+  width:100%;padding:9px 14px;border:1px solid var(--border);
+  background:transparent;color:var(--cyan);
+  font-family:var(--font);font-size:.82rem;font-weight:600;
+  cursor:pointer;transition:all .18s;border-radius:var(--radius);
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  letter-spacing:.5px;position:relative;overflow:hidden;
+}
+.btn::after{content:'';position:absolute;inset:0;background:var(--cyan);opacity:0;transition:opacity .18s}
+.btn:hover::after{opacity:.06}
+.btn:hover{border-color:var(--cyan);box-shadow:var(--glow-cyan)}
+.btn:disabled{opacity:.3;cursor:not-allowed}
+.btn.btn-primary{background:rgba(0,229,255,.1);border-color:var(--cyan)}
+.btn.btn-danger{color:var(--red);border-color:var(--red)}
+.btn.btn-danger::after{background:var(--red)}
+.btn.btn-danger:hover{box-shadow:0 0 16px rgba(255,61,90,.2)}
+.btn.btn-orange{color:var(--orange);border-color:var(--orange)}
+.btn.btn-orange::after{background:var(--orange)}
+.btn-row{display:flex;gap:6px}
+.btn-row .btn{flex:1}
+.btn-sm{padding:6px 10px;font-size:.72rem}
+
+/* Upload zone */
+.upload-zone{
+  border:1px dashed var(--border2);padding:11px;text-align:center;
+  cursor:pointer;border-radius:var(--radius);transition:all .18s;
+  font-family:var(--mono);font-size:.65rem;color:var(--text3);margin-top:6px;
+}
+.upload-zone:hover{border-color:var(--cyan);color:var(--cyan);background:rgba(0,229,255,.03)}
+#fileInput{display:none}
+
+/* Slider */
+.slider-row{display:flex;justify-content:space-between;font-size:.72rem;color:var(--text2);margin-bottom:6px}
+.slider-val{font-family:var(--mono);color:var(--cyan)}
+input[type=range]{width:100%;-webkit-appearance:none;height:2px;background:var(--border2);outline:none;border-radius:2px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--cyan);cursor:pointer;box-shadow:var(--glow-cyan)}
+
+/* Select */
+select{
+  width:100%;background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);font-family:var(--mono);font-size:.68rem;
+  padding:7px 10px;cursor:pointer;appearance:none;outline:none;border-radius:var(--radius);margin-top:6px;
+}
+select:focus{border-color:var(--cyan)}
+select option{background:var(--surface)}
+
+/* Chip */
+.chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
+.chip{
+  padding:4px 10px;border:1px solid var(--border);
+  font-family:var(--mono);font-size:.6rem;color:var(--text2);
+  cursor:pointer;transition:all .18s;border-radius:20px;
+}
+.chip:hover{border-color:var(--orange);color:var(--orange)}
+.chip.active{border-color:var(--orange);color:var(--orange);background:rgba(255,109,31,.08)}
+
+/* Stats grid */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.stat-box{background:var(--surface2);border:1px solid var(--border);padding:8px 10px;border-radius:var(--radius)}
+.stat-lbl{font-family:var(--mono);font-size:.55rem;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px}
+.stat-val{font-family:var(--mono);font-size:1.2rem;color:var(--cyan)}
+.stat-val.warn{color:var(--yellow)}
+.stat-val.danger{color:var(--red)}
+
+/* Text input */
+.text-input{
+  width:100%;padding:8px 10px;background:var(--surface2);
+  border:1px solid var(--border);color:var(--text);
+  font-family:var(--mono);font-size:.7rem;border-radius:var(--radius);outline:none;
+  transition:border-color .18s;
+}
+.text-input:focus{border-color:var(--cyan)}
+.text-input::placeholder{color:var(--text3)}
+
+/* Detection log */
+.det-log{flex:1;overflow-y:auto;padding:10px 14px}
+.det-log::-webkit-scrollbar{width:3px}
+.det-log::-webkit-scrollbar-thumb{background:var(--border2)}
+.det-empty{font-family:var(--mono);font-size:.65rem;color:var(--text3);text-align:center;margin-top:20px}
+.det-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(30,45,61,.6);animation:slideIn .2s ease}
+@keyframes slideIn{from{opacity:0;transform:translateX(6px)}to{opacity:1}}
+.det-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.det-name{font-size:.85rem;font-weight:600;color:var(--text);text-transform:capitalize;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.det-bar-wrap{height:2px;background:var(--border);margin-top:3px;border-radius:2px}
+.det-bar{height:100%;border-radius:2px;transition:width .3s}
+.det-pct{font-family:var(--mono);font-size:.65rem;color:var(--text2);flex-shrink:0}
+
+/* ── MAIN AREA ── */
+.main{flex:1;position:relative;overflow:hidden;background:#000}
+.panel{position:absolute;inset:0;display:none;flex-direction:column}
+.panel.active{display:flex}
+
+/* Scanner */
+.scanner-wrap{position:relative;flex:1;overflow:hidden}
+#videoEl{width:100%;height:100%;object-fit:cover;display:block}
+#canvasEl{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.scanner-wrap::after{
+  content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.05) 3px,rgba(0,0,0,.05) 4px);
+  pointer-events:none;
+}
+.hud-corner{position:absolute;width:24px;height:24px;z-index:20}
+.hud-corner.tl{top:16px;left:16px;border-top:1.5px solid var(--cyan);border-left:1.5px solid var(--cyan)}
+.hud-corner.tr{top:16px;right:16px;border-top:1.5px solid var(--cyan);border-right:1.5px solid var(--cyan)}
+.hud-corner.bl{bottom:16px;left:16px;border-bottom:1.5px solid var(--cyan);border-left:1.5px solid var(--cyan)}
+.hud-corner.br{bottom:16px;right:16px;border-bottom:1.5px solid var(--cyan);border-right:1.5px solid var(--cyan)}
+.scan-line{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--cyan),transparent);z-index:18;animation:scanAnim 3.5s ease-in-out infinite;opacity:0}
+@keyframes scanAnim{0%{top:0%;opacity:0}5%{opacity:.8}95%{opacity:.8}100%{top:100%;opacity:0}}
+.scanner-overlay{
+  position:absolute;inset:0;z-index:25;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  background:rgba(6,8,16,.92);transition:opacity .5s;
+}
+.scanner-overlay.gone{opacity:0;pointer-events:none}
+.spinner{width:48px;height:48px;border:1.5px solid var(--border2);border-top-color:var(--cyan);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.overlay-msg{font-family:var(--mono);font-size:.78rem;color:var(--cyan);letter-spacing:2px;text-align:center}
+.fps-hud{position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:30;font-family:var(--mono);font-size:.65rem;color:var(--green);background:rgba(0,0,0,.7);border:1px solid rgba(0,245,155,.3);padding:3px 10px;border-radius:20px;opacity:0;transition:opacity .3s}
+.fps-hud.on{opacity:1}
+
+/* Risk badge */
+.risk-badge{
+  position:absolute;bottom:20px;left:50%;transform:translateX(-50%);
+  z-index:30;display:flex;align-items:center;gap:8px;
+  font-family:var(--mono);font-size:.72rem;letter-spacing:2px;text-transform:uppercase;
+  padding:7px 18px;border-radius:4px;
+  background:rgba(6,8,16,.85);border:1px solid;
+  opacity:0;transition:all .4s;
+}
+.risk-badge.on{opacity:1}
+.risk-badge.safe{border-color:var(--green);color:var(--green)}
+.risk-badge.warn{border-color:var(--yellow);color:var(--yellow)}
+.risk-badge.danger{border-color:var(--red);color:var(--red);animation:riskPulse 1s ease-in-out infinite}
+@keyframes riskPulse{0%,100%{box-shadow:0 0 0 rgba(255,61,90,0)}50%{box-shadow:0 0 16px rgba(255,61,90,.4)}}
+
+/* ── 3D VIEWER ── */
+#canvas3d{width:100%;height:100%;display:block}
+.viewer-hud{position:absolute;top:16px;right:16px;display:flex;flex-direction:column;gap:6px;z-index:20}
+.viewer-hud .btn{width:auto;padding:6px 12px;font-size:.68rem}
+.viewer-info{position:absolute;bottom:16px;left:16px;font-family:var(--mono);font-size:.6rem;color:var(--text3)}
+
+/* ── ANALYTICS ── */
+.analytics-scroll{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px}
+.analytics-scroll::-webkit-scrollbar{width:3px}
+.analytics-scroll::-webkit-scrollbar-thumb{background:var(--border2)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.card-head{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.card-title{font-family:var(--mono);font-size:.62rem;font-weight:700;color:var(--text2);letter-spacing:2.5px;text-transform:uppercase}
+.card-body{padding:16px}
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.bar-label{font-family:var(--mono);font-size:.62rem;color:var(--text2);width:100px;flex-shrink:0;text-transform:capitalize;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-track{flex:1;height:10px;background:var(--surface3);border-radius:2px;overflow:hidden}
+.bar-fill{height:100%;border-radius:2px;transition:width .6s ease}
+.bar-count{font-family:var(--mono);font-size:.6rem;color:var(--text3);width:28px;text-align:right;flex-shrink:0}
+.analytics-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.a-stat{background:var(--surface2);border:1px solid var(--border);padding:12px;border-radius:var(--radius);text-align:center}
+.a-stat-val{font-family:var(--mono);font-size:1.5rem;color:var(--cyan);display:block}
+.a-stat-lbl{font-family:var(--mono);font-size:.55rem;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;margin-top:4px;display:block}
+
+/* Risck histogram */
+.risk-history{display:flex;align-items:flex-end;gap:2px;height:60px;padding-top:8px}
+.risk-bar{flex:1;min-width:4px;border-radius:2px 2px 0 0;transition:height .3s}
+
+/* ── PROJECTS ── */
+.proj-scroll{flex:1;overflow-y:auto;padding:16px}
+.proj-scroll::-webkit-scrollbar{width:3px}
+.proj-scroll::-webkit-scrollbar-thumb{background:var(--border2)}
+.proj-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:14px;margin-bottom:8px;
+  cursor:default;transition:border-color .18s;position:relative;
+}
+.proj-card:hover{border-color:var(--border2)}
+.proj-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+.proj-name{font-weight:700;font-size:.95rem;color:var(--cyan)}
+.proj-date{font-family:var(--mono);font-size:.58rem;color:var(--text3)}
+.proj-meta{display:flex;gap:10px;flex-wrap:wrap}
+.proj-tag{font-family:var(--mono);font-size:.6rem;color:var(--text2);background:var(--surface2);border:1px solid var(--border);padding:2px 8px;border-radius:20px}
+.proj-del{position:absolute;top:10px;right:10px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:.75rem;padding:3px 6px;transition:color .18s;border-radius:3px}
+.proj-del:hover{color:var(--red);background:rgba(255,61,90,.08)}
+.proj-risk{padding:2px 8px;border-radius:20px;font-family:var(--mono);font-size:.58rem;font-weight:700;letter-spacing:1px}
+.proj-risk.safe{background:rgba(0,245,155,.1);color:var(--green);border:1px solid rgba(0,245,155,.3)}
+.proj-risk.warn{background:rgba(255,214,0,.1);color:var(--yellow);border:1px solid rgba(255,214,0,.3)}
+.proj-risk.danger{background:rgba(255,61,90,.1);color:var(--red);border:1px solid rgba(255,61,90,.3)}
+
+/* ── INSPECTION FORM ── */
+.form-scroll{flex:1;overflow-y:auto;padding:20px}
+.form-scroll::-webkit-scrollbar{width:3px}
+.form-scroll::-webkit-scrollbar-thumb{background:var(--border2)}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.form-field{display:flex;flex-direction:column;gap:5px}
+.form-field.full{grid-column:1/-1}
+.field-label{font-family:var(--mono);font-size:.6rem;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase}
+.field-input{background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--font);font-size:.82rem;padding:8px 10px;border-radius:var(--radius);outline:none;transition:border-color .18s;width:100%}
+.field-input:focus{border-color:var(--cyan)}
+.field-input::placeholder{color:var(--text3)}
+textarea.field-input{resize:vertical;min-height:80px;font-family:var(--mono);font-size:.72rem}
+select.field-input{appearance:none;cursor:pointer}
+select.field-input option{background:var(--surface)}
+.checklist{display:flex;flex-direction:column;gap:6px}
+.check-item{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:all .18s}
+.check-item:hover{border-color:var(--border2)}
+.check-item.checked{border-color:var(--green);background:rgba(0,245,155,.04)}
+.check-box{width:16px;height:16px;border:1.5px solid var(--border2);border-radius:3px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .18s;font-size:.7rem}
+.check-item.checked .check-box{background:var(--green);border-color:var(--green);color:#000}
+.check-text{font-size:.8rem;color:var(--text2);transition:color .18s}
+.check-item.checked .check-text{color:var(--text)}
+.risk-selector{display:flex;gap:6px;margin-top:4px}
+.risk-opt{flex:1;padding:8px;text-align:center;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;font-family:var(--mono);font-size:.65rem;font-weight:700;letter-spacing:1px;transition:all .18s}
+.risk-opt[data-risk="safe"]{color:var(--green)}
+.risk-opt[data-risk="safe"].sel{background:rgba(0,245,155,.12);border-color:var(--green)}
+.risk-opt[data-risk="warn"]{color:var(--yellow)}
+.risk-opt[data-risk="warn"].sel{background:rgba(255,214,0,.1);border-color:var(--yellow)}
+.risk-opt[data-risk="danger"]{color:var(--red)}
+.risk-opt[data-risk="danger"].sel{background:rgba(255,61,90,.1);border-color:var(--red)}
+
+/* ── EXPORT PANEL ── */
+.export-scroll{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:10px}
+.exp-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:16px;display:flex;align-items:center;gap:14px;cursor:pointer;transition:all .18s;
+}
+.exp-card:hover{border-color:var(--border2);background:var(--surface2);transform:translateX(3px)}
+.exp-icon{font-size:1.8rem;flex-shrink:0;width:40px;text-align:center}
+.exp-info{flex:1}
+.exp-title{font-weight:700;font-size:.9rem;color:var(--cyan);letter-spacing:.5px}
+.exp-desc{font-family:var(--mono);font-size:.6rem;color:var(--text3);margin-top:3px}
+.exp-badge{font-family:var(--mono);font-size:.55rem;padding:2px 7px;border-radius:20px;border:1px solid var(--border);color:var(--text3)}
+.exp-badge.new{border-color:var(--orange);color:var(--orange)}
+
+/* ── TOAST ── */
+.toast{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  z-index:999;background:var(--surface);border:1px solid;
+  font-family:var(--mono);font-size:.72rem;
+  padding:9px 18px;letter-spacing:.8px;
+  opacity:0;transition:all .3s;pointer-events:none;border-radius:var(--radius);
+  white-space:nowrap;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+
+/* Section log head inside sidebar */
+.log-head{padding:10px 14px 0;font-family:var(--mono);font-size:.58rem;font-weight:700;color:var(--text3);letter-spacing:3px;text-transform:uppercase;flex-shrink:0}
+
+/* Scrollbar sidebar */
+.sidebar{overflow-y:auto}
+.sidebar::-webkit-scrollbar{width:3px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--border2)}
+
+/* Tag strip at bottom of sidebar */
+.sidebar-footer{margin-top:auto;padding:10px 14px;border-top:1px solid var(--border);font-family:var(--mono);font-size:.55rem;color:var(--text3);letter-spacing:1px}
+
+@media(max-width:900px){
+  .nav{display:none}
+  .analytics-stats{grid-template-columns:1fr 1fr}
+  .form-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-hex">🏗</div>
+    <div>
+      <div class="brand-name">SCAFFVISION</div>
+      <div class="brand-tag">ENTERPRISE AI PLATFORM</div>
+    </div>
+  </div>
+
+  <nav class="nav">
+    <button class="nav-btn active" data-panel="scanner"><span class="nav-icon">📷</span> Scanner</button>
+    <button class="nav-btn" data-panel="viewer3d"><span class="nav-icon">◈</span> Modelo 3D</button>
+    <button class="nav-btn" data-panel="analytics"><span class="nav-icon">📈</span> Analytics</button>
+    <button class="nav-btn" data-panel="inspection"><span class="nav-icon">📋</span> Inspeção</button>
+    <button class="nav-btn" data-panel="projects"><span class="nav-icon">▦</span> Projetos</button>
+    <button class="nav-btn" data-panel="export"><span class="nav-icon">⬇</span> Exportar</button>
+  </nav>
+
+  <div class="topbar-right">
+    <div class="model-chip" id="modelChip">CARREGANDO...</div>
+    <div class="live-badge">
+      <div class="live-dot" id="liveDot"></div>
+      <span id="liveLabel">OFFLINE</span>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <div class="sidebar-section">
+      <div class="section-head">Controles</div>
+      <div class="btn-row" style="margin-bottom:6px">
+        <button class="btn btn-primary btn-sm" id="btnStart" onclick="startCamera()">▶ Câmera</button>
+        <button class="btn btn-danger btn-sm" id="btnStop" onclick="stopCamera()" disabled>■ Parar</button>
+      </div>
+      <div class="upload-zone" onclick="document.getElementById('fileInput').click()">📁 Analisar Imagem</div>
+      <input type="file" id="fileInput" accept="image/*"/>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-head">Câmera</div>
+      <select id="cameraSelect"><option value="">Auto-detectar</option></select>
+      <div class="chips" id="modelChips">
+        <div class="chip active" data-model="lite">LITE</div>
+        <div class="chip" data-model="full">FULL</div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-head">Sensibilidade</div>
+      <div class="slider-row"><span>Threshold</span><span class="slider-val" id="threshVal">60%</span></div>
+      <input type="range" id="threshSlider" min="10" max="95" value="60"/>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-head">Análise de Risco</div>
+      <div class="stats-grid">
+        <div class="stat-box"><div class="stat-lbl">Objetos</div><div class="stat-val" id="sCount">0</div></div>
+        <div class="stat-box"><div class="stat-lbl">FPS</div><div class="stat-val" id="sFps">--</div></div>
+        <div class="stat-box"><div class="stat-lbl">Frames</div><div class="stat-val" id="sFrames">0</div></div>
+        <div class="stat-box"><div class="stat-lbl">Conf.</div><div class="stat-val" id="sAvg">--</div></div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="section-head">Salvar Projeto</div>
+      <input type="text" class="text-input" id="projName" placeholder="Nome do projeto..."/>
+      <button class="btn btn-orange btn-sm" onclick="saveProject()" style="margin-top:6px">💾 Salvar</button>
+    </div>
+
+    <div class="log-head">Detecções ao Vivo</div>
+    <div class="det-log" id="detLog">
+      <div class="det-empty">Aguardando scanner...</div>
+    </div>
+
+    <div class="sidebar-footer">
+      TF.js v4.11 · COCO-SSD · Three.js r128<br/>
+      ScaffVision AI Enterprise © 2025
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- SCANNER -->
+    <div class="panel active" id="panel-scanner">
+      <div class="scanner-wrap">
+        <div class="hud-corner tl"></div><div class="hud-corner tr"></div>
+        <div class="hud-corner bl"></div><div class="hud-corner br"></div>
+        <div class="scan-line"></div>
+        <video id="videoEl" autoplay playsinline muted></video>
+        <canvas id="canvasEl"></canvas>
+        <div class="fps-hud" id="fpsHud">-- FPS</div>
+        <div class="risk-badge" id="riskBadge">● ANALISANDO</div>
+        <div class="scanner-overlay" id="scanOverlay">
+          <div class="spinner" id="overlaySpinner"></div>
+          <div class="overlay-msg" id="overlayMsg">CARREGANDO MODELO IA...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3D VIEWER -->
+    <div class="panel" id="panel-viewer3d" style="position:relative">
+      <canvas id="canvas3d"></canvas>
+      <div class="viewer-hud">
+        <button class="btn btn-sm" onclick="resetCam3D()">↺ Reset</button>
+        <button class="btn btn-sm" id="btnRot" onclick="toggleRot()">⏸ Pausar</button>
+        <button class="btn btn-sm btn-orange" onclick="addFloor()">+ Andar</button>
+        <button class="btn btn-sm" onclick="removeFloor()">− Andar</button>
+      </div>
+      <div class="viewer-info" id="viewerInfo">Clique e arraste para girar · Scroll para zoom</div>
+    </div>
+
+    <!-- ANALYTICS -->
+    <div class="panel" id="panel-analytics">
+      <div class="analytics-scroll">
+        <div class="analytics-stats">
+          <div class="a-stat"><span class="a-stat-val" id="aFrames">0</span><span class="a-stat-lbl">Frames</span></div>
+          <div class="a-stat"><span class="a-stat-val" id="aTotal">0</span><span class="a-stat-lbl">Detecções</span></div>
+          <div class="a-stat"><span class="a-stat-val" id="aClasses">0</span><span class="a-stat-lbl">Classes</span></div>
+          <div class="a-stat"><span class="a-stat-val" id="aConf">--</span><span class="a-stat-lbl">Conf. Média</span></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Frequência por Classe</div></div>
+          <div class="card-body"><div id="barChart"><div class="det-empty">Sem dados — use o scanner</div></div></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Histórico de Risco (última hora)</div></div>
+          <div class="card-body"><div class="risk-history" id="riskHistory"></div></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Top Objetos Detectados</div></div>
+          <div class="card-body"><div id="topObjects"><div class="det-empty">Sem dados</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- INSPECTION FORM -->
+    <div class="panel" id="panel-inspection">
+      <div class="form-scroll">
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-head"><div class="card-title">📋 Ficha de Inspeção de Andaimes</div></div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="form-field"><div class="field-label">Empresa / Cliente</div><input class="field-input" id="fEmpresa" placeholder="Nome da empresa..."/></div>
+              <div class="form-field"><div class="field-label">Responsável Técnico</div><input class="field-input" id="fResp" placeholder="Nome do responsável..."/></div>
+              <div class="form-field"><div class="field-label">Local / Obra</div><input class="field-input" id="fLocal" placeholder="Endereço ou código da obra..."/></div>
+              <div class="form-field"><div class="field-label">Data da Inspeção</div><input class="field-input" type="date" id="fData"/></div>
+              <div class="form-field"><div class="field-label">Tipo de Andaime</div>
+                <select class="field-input" id="fTipo">
+                  <option value="">Selecione...</option>
+                  <option>Andaime tubular</option>
+                  <option>Andaime fachadeiro</option>
+                  <option>Andaime suspenso</option>
+                  <option>Andaime sobre cavalete</option>
+                  <option>Plataforma elevatória</option>
+                  <option>Outro</option>
+                </select>
+              </div>
+              <div class="form-field"><div class="field-label">Altura Máxima (m)</div><input class="field-input" type="number" id="fAltura" placeholder="Ex: 12"/></div>
+              <div class="form-field full"><div class="field-label">Observações Gerais</div><textarea class="field-input" id="fObs" placeholder="Descreva as condições gerais do andaime..."></textarea></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-head"><div class="card-title">✅ Checklist de Segurança (NR-18)</div></div>
+          <div class="card-body">
+            <div class="checklist" id="checklist">
+              <!-- preenchido por JS -->
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-head"><div class="card-title">⚠️ Avaliação de Risco</div></div>
+          <div class="card-body">
+            <div class="field-label" style="margin-bottom:8px">Classificação geral da inspeção</div>
+            <div class="risk-selector">
+              <div class="risk-opt" data-risk="safe">✓ SEGURO</div>
+              <div class="risk-opt" data-risk="warn">⚠ ATENÇÃO</div>
+              <div class="risk-opt" data-risk="danger">✕ PERIGO</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><div class="card-title">Ações de Detecção IA</div></div>
+          <div class="card-body">
+            <div style="font-family:var(--mono);font-size:.65rem;color:var(--text2);margin-bottom:10px">
+              Detecções atuais da IA serão incluídas no relatório automaticamente.
+            </div>
+            <button class="btn btn-primary" onclick="exportInspectionPDF()">📄 Gerar Relatório PDF Completo</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PROJECTS -->
+    <div class="panel" id="panel-projects">
+      <div class="proj-scroll" id="projList">
+        <div class="det-empty">Nenhum projeto salvo nesta sessão</div>
+      </div>
+    </div>
+
+    <!-- EXPORT -->
+    <div class="panel" id="panel-export">
+      <div class="export-scroll">
+        <div style="font-family:var(--mono);font-size:.65rem;color:var(--text3);padding:4px 0 8px">
+          EXPORTAR DADOS DA SESSÃO ATUAL
+        </div>
+        <div class="exp-card" onclick="exportPDF()">
+          <div class="exp-icon">📄</div>
+          <div class="exp-info">
+            <div class="exp-title">Relatório de Análise PDF</div>
+            <div class="exp-desc">Sumário completo com estatísticas e detecções</div>
+          </div>
+          <div class="exp-badge">PDF</div>
+        </div>
+        <div class="exp-card" onclick="exportJSON()">
+          <div class="exp-icon">🗂</div>
+          <div class="exp-info">
+            <div class="exp-title">Dados Brutos JSON</div>
+            <div class="exp-desc">Todas as detecções e metadados da sessão</div>
+          </div>
+          <div class="exp-badge">JSON</div>
+        </div>
+        <div class="exp-card" onclick="exportCSV()">
+          <div class="exp-icon">📊</div>
+          <div class="exp-info">
+            <div class="exp-title">Tabela CSV</div>
+            <div class="exp-desc">Compatível com Excel e Google Sheets</div>
+          </div>
+          <div class="exp-badge">CSV</div>
+        </div>
+        <div class="exp-card" onclick="exportImage()">
+          <div class="exp-icon">🖼</div>
+          <div class="exp-info">
+            <div class="exp-title">Captura do Frame Atual</div>
+            <div class="exp-desc">Screenshot com anotações de detecção</div>
+          </div>
+          <div class="exp-badge">PNG</div>
+        </div>
+        <div class="exp-card" onclick="exportInspectionPDF()">
+          <div class="exp-icon">📋</div>
+          <div class="exp-info">
+            <div class="exp-title">Laudo de Inspeção Completo</div>
+            <div class="exp-desc">Ficha NR-18 + IA + checklist + assinatura</div>
+          </div>
+          <div class="exp-badge new">NOVO</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════
+let model=null, modelVariant='lite';
+let stream=null, detecting=false;
+let frameCount=0, totalFrames=0, fpsTimer=null;
+let threshold=0.60, animId=null;
+let lastDets=[], lastPreds=[];
+let projects=[];
+let classAcc={}, totalDets=0;
+let riskLog=[];  // [{time,level}]
+let selectedRisk='';
+
+// 3D
+let scene3d=null,cam3d=null,rend3d=null,scaffGrp=null;
+let rotating=true, floors=5;
+let isDrag=false, prevMX=0, prevMY=0;
+
+const COLORS=['#00e5ff','#ff6d1f','#00f59b','#ffd600','#ff3d5a','#a259ff','#00ffc8','#ff9500','#4d9fff','#ff4da6'];
+const colorMap={};let ci=0;
+function getC(cls){if(!colorMap[cls])colorMap[cls]=COLORS[ci++%COLORS.length];return colorMap[cls]}
+
+// ═══════════════════════════════════════════════════
+// ELEMENTS
+// ═══════════════════════════════════════════════════
+const $=id=>document.getElementById(id);
+const videoEl=$('videoEl'), canvasEl=$('canvasEl'), ctx=canvasEl.getContext('2d');
+const scanOverlay=$('scanOverlay'), overlaySpinner=$('overlaySpinner'), overlayMsg=$('overlayMsg');
+const liveDot=$('liveDot'), liveLabel=$('liveLabel'), modelChip=$('modelChip');
+const fpsHud=$('fpsHud'), riskBadge=$('riskBadge');
+const btnStart=$('btnStart'), btnStop=$('btnStop');
+const threshSlider=$('threshSlider'), threshVal=$('threshVal');
+const cameraSelect=$('cameraSelect'), detLog=$('detLog');
+const sCount=$('sCount'), sFps=$('sFps'), sFrames=$('sFrames'), sAvg=$('sAvg');
+
+// ═══════════════════════════════════════════════════
+// MODEL
+// ═══════════════════════════════════════════════════
+async function loadModel(v='lite'){
+  setLive(false,'CARREGANDO');
+  overlayMsg.textContent=`CARREGANDO COCO-SSD (${v.toUpperCase()})...`;
+  overlaySpinner.style.display='block';
+  scanOverlay.classList.remove('gone');
+  modelChip.textContent='CARREGANDO...';
+  try{
+    model=await cocoSsd.load({base:v});
+    modelChip.textContent=`COCO-SSD ${v.toUpperCase()}`;
+    setLive(false,'PRONTO');
+    overlayMsg.textContent='PRONTO — INICIE A CÂMERA';
+    overlaySpinner.style.display='none';
+    toast(`✓ Modelo ${v.toUpperCase()} carregado`);
+  }catch(e){
+    overlayMsg.textContent='ERRO AO CARREGAR MODELO';
+    toast('Erro ao carregar modelo',true);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// CAMERA
+// ═══════════════════════════════════════════════════
+async function populateCams(){
+  try{
+    const devs=await navigator.mediaDevices.enumerateDevices();
+    const cams=devs.filter(d=>d.kind==='videoinput');
+    const cur=cameraSelect.value;
+    cameraSelect.innerHTML='';
+    cams.forEach((c,i)=>{const o=document.createElement('option');o.value=c.deviceId;o.textContent=c.label||`Câmera ${i+1}`;cameraSelect.appendChild(o)});
+    if(cur)cameraSelect.value=cur;
+    else{const b=cams.find(c=>/back|environment|rear/i.test(c.label));if(b)cameraSelect.value=b.deviceId}
+  }catch(e){}
+}
+
+async function startCamera(){
+  if(!model){toast('Aguarde o modelo carregar',true);return}
+  const id=cameraSelect.value;
+  const constraints={video:id?{deviceId:{exact:id},width:{ideal:1280},height:{ideal:720}}:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}};
+  try{
+    stream=await navigator.mediaDevices.getUserMedia(constraints);
+    videoEl.srcObject=stream; await videoEl.play(); await populateCams();
+    scanOverlay.classList.add('gone'); fpsHud.classList.add('on');
+    btnStart.disabled=true; btnStop.disabled=false;
+    detecting=true; setLive(true,'AO VIVO');
+    startFPS(); detectLoop();
+  }catch(e){toast('Erro câmera: '+e.message,true)}
+}
+
+function stopCamera(){
+  detecting=false;
+  if(animId)cancelAnimationFrame(animId);
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
+  videoEl.srcObject=null; clearInterval(fpsTimer);
+  ctx.clearRect(0,0,canvasEl.width,canvasEl.height);
+  scanOverlay.classList.remove('gone'); overlayMsg.textContent='CÂMERA ENCERRADA'; overlaySpinner.style.display='none';
+  fpsHud.classList.remove('on'); riskBadge.classList.remove('on');
+  btnStart.disabled=false; btnStop.disabled=true;
+  setLive(false,'OFFLINE');
+  detLog.innerHTML='<div class="det-empty">Aguardando scanner...</div>';
+  sCount.textContent='0'; sFps.textContent='--'; sAvg.textContent='--';
+}
+
+// ═══════════════════════════════════════════════════
+// DETECTION
+// ═══════════════════════════════════════════════════
+async function detectLoop(){
+  if(!detecting)return;
+  resizeCanvas();
+  if(videoEl.readyState>=2){
+    try{
+      const preds=await model.detect(videoEl,10,threshold);
+      draw(preds); updateLog(preds); accumulate(preds);
+      updateRiskBadge(preds);
+      lastDets=preds; totalFrames++; frameCount++;
+      sFrames.textContent=totalFrames;
+    }catch(e){}
+  }
+  animId=requestAnimationFrame(detectLoop);
+}
+
+function resizeCanvas(){
+  const r=videoEl.getBoundingClientRect();
+  if(canvasEl.width!==r.width||canvasEl.height!==r.height){canvasEl.width=r.width;canvasEl.height=r.height}
+}
+
+function draw(preds){
+  ctx.clearRect(0,0,canvasEl.width,canvasEl.height);
+  const sx=canvasEl.width/(videoEl.videoWidth||640);
+  const sy=canvasEl.height/(videoEl.videoHeight||480);
+  preds.forEach(p=>{
+    const [x,y,w,h]=p.bbox;
+    const X=x*sx,Y=y*sy,W=w*sx,H=h*sy;
+    const sc=Math.round(p.score*100), col=getC(p.class);
+    // glow box
+    ctx.shadowColor=col; ctx.shadowBlur=16;
+    ctx.strokeStyle=col; ctx.lineWidth=1.5; ctx.strokeRect(X,Y,W,H);
+    ctx.shadowBlur=0;
+    // corners
+    const cs=16; ctx.lineWidth=2.5;
+    [[X,Y],[X+W,Y],[X,Y+H],[X+W,Y+H]].forEach(([cx,cy])=>{
+      const dx=cx===X?1:-1,dy=cy===Y?1:-1;
+      ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+dx*cs,cy);
+      ctx.moveTo(cx,cy);ctx.lineTo(cx,cy+dy*cs);ctx.stroke();
+    });
+    // label
+    const lbl=`${p.class}  ${sc}%`;
+    ctx.font='600 12px Space Grotesk,sans-serif';
+    const tw=ctx.measureText(lbl).width;
+    ctx.fillStyle=col+'bb'; ctx.fillRect(X,Y-20,tw+16,20);
+    ctx.fillStyle='#060810'; ctx.fillText(lbl,X+7,Y-6);
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// RISK ENGINE
+// ═══════════════════════════════════════════════════
+const RISK_RULES={
+  person:{high:3,medium:1},
+  car:{high:2,medium:1},
+  truck:{high:1,medium:0},
+  motorcycle:{high:1,medium:0},
+};
+const DANGER_CLASSES=['knife','scissors','gun'];
+
+function computeRisk(preds){
+  if(preds.some(p=>DANGER_CLASSES.includes(p.class)))return'danger';
+  let score=0;
+  preds.forEach(p=>{
+    const r=RISK_RULES[p.class];
+    if(r){score+=p.score>0.8?r.high:r.medium}
+  });
+  if(score>=3)return'danger';
+  if(score>=1)return'warn';
+  return'safe';
+}
+
+function updateRiskBadge(preds){
+  if(preds.length===0){riskBadge.classList.remove('on');return}
+  const level=computeRisk(preds);
+  riskBadge.className=`risk-badge on ${level}`;
+  riskBadge.textContent={safe:'● ÁREA SEGURA',warn:'▲ ATENÇÃO',danger:'✕ RISCO DETECTADO'}[level];
+  // log for history
+  riskLog.push({time:Date.now(),level});
+  if(riskLog.length>60)riskLog.shift();
+  updateRiskHistory();
+}
+
+function updateRiskHistory(){
+  const el=$('riskHistory');
+  if(!el)return;
+  el.innerHTML='';
+  const col={safe:'var(--green)',warn:'var(--yellow)',danger:'var(--red)'};
+  riskLog.forEach(r=>{
+    const b=document.createElement('div');
+    b.className='risk-bar';
+    b.style.background=col[r.level];
+    b.style.height=(r.level==='danger'?100:r.level==='warn'?55:20)+'%';
+    el.appendChild(b);
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// LOG
+// ═══════════════════════════════════════════════════
+function updateLog(preds){
+  sCount.textContent=preds.length;
+  if(!preds.length){if(lastPreds.length){detLog.innerHTML='<div class="det-empty">Nenhum objeto detectado</div>'}sAvg.textContent='--';lastPreds=[];return}
+  const key=preds.map(p=>p.class+Math.round(p.score*100)).join('|');
+  if(key===lastPreds.map(p=>p.class+Math.round(p.score*100)).join('|'))return;
+  lastPreds=preds;
+  const avg=Math.round(preds.reduce((s,p)=>s+p.score,0)/preds.length*100);
+  sAvg.textContent=avg+'%';
+  detLog.innerHTML='';
+  [...preds].sort((a,b)=>b.score-a.score).forEach(p=>{
+    const sc=Math.round(p.score*100),col=getC(p.class);
+    const d=document.createElement('div');d.className='det-item';
+    d.innerHTML=`<div class="det-dot" style="background:${col};box-shadow:0 0 6px ${col}"></div><div style="flex:1;min-width:0"><div class="det-name">${p.class}</div><div class="det-bar-wrap"><div class="det-bar" style="width:${sc}%;background:${col}"></div></div></div><div class="det-pct">${sc}%</div>`;
+    detLog.appendChild(d);
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// ACCUMULATOR
+// ═══════════════════════════════════════════════════
+function accumulate(preds){
+  preds.forEach(p=>{
+    if(!classAcc[p.class])classAcc[p.class]={count:0,total:0};
+    classAcc[p.class].count++;classAcc[p.class].total+=p.score;totalDets++;
+  });
+  $('aFrames').textContent=totalFrames;
+  $('aTotal').textContent=totalDets;
+  $('aClasses').textContent=Object.keys(classAcc).length;
+  if(totalDets>0){
+    const ts=Object.values(classAcc).reduce((s,v)=>s+v.total,0);
+    $('aConf').textContent=Math.round(ts/totalDets*100)+'%';
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// FPS
+// ═══════════════════════════════════════════════════
+function startFPS(){
+  clearInterval(fpsTimer);
+  fpsTimer=setInterval(()=>{
+    const fps=frameCount;frameCount=0;
+    fpsHud.textContent=fps+' FPS';
+    sFps.textContent=fps;
+    sFps.className='stat-val'+(fps<5?' danger':fps<15?' warn':'');
+  },1000);
+}
+
+// ═══════════════════════════════════════════════════
+// IMAGE MODE
+// ═══════════════════════════════════════════════════
+$('fileInput').addEventListener('change',async e=>{
+  const file=e.target.files[0];
+  if(!file||!model){toast('Carregue o modelo primeiro',true);return}
+  stopCamera();
+  const img=new Image();
+  img.onload=async()=>{
+    scanOverlay.classList.add('gone');
+    setLive(true,'ANALISANDO');
+    const wrap=document.querySelector('.scanner-wrap');
+    canvasEl.width=wrap.clientWidth;canvasEl.height=wrap.clientHeight;
+    const sc=Math.min(canvasEl.width/img.width,canvasEl.height/img.height);
+    const dx=(canvasEl.width-img.width*sc)/2,dy=(canvasEl.height-img.height*sc)/2;
+    ctx.clearRect(0,0,canvasEl.width,canvasEl.height);
+    ctx.drawImage(img,dx,dy,img.width*sc,img.height*sc);
+    const preds=await model.detect(img,10,threshold);
+    preds.forEach(p=>{
+      const [x,y,w,h]=p.bbox;
+      const X=x*sc+dx,Y=y*sc+dy,W=w*sc,H=h*sc;
+      const sc2=Math.round(p.score*100),col=getC(p.class);
+      ctx.shadowColor=col;ctx.shadowBlur=16;ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.strokeRect(X,Y,W,H);ctx.shadowBlur=0;
+      const cs=16;ctx.lineWidth=2.5;
+      [[X,Y],[X+W,Y],[X,Y+H],[X+W,Y+H]].forEach(([cx,cy])=>{
+        const ddx=cx===X?1:-1,ddy=cy===Y?1:-1;
+        ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+ddx*cs,cy);ctx.moveTo(cx,cy);ctx.lineTo(cx,cy+ddy*cs);ctx.stroke();
+      });
+      const lbl=`${p.class}  ${sc2}%`;
+      ctx.font='600 12px Space Grotesk,sans-serif';
+      const tw=ctx.measureText(lbl).width;
+      ctx.fillStyle=col+'bb';ctx.fillRect(X,Y-20,tw+16,20);ctx.fillStyle='#060810';ctx.fillText(lbl,X+7,Y-6);
+    });
+    lastDets=preds;updateLog(preds);accumulate(preds);updateRiskBadge(preds);
+    setLive(false,'ANALISADO');
+    toast(`${preds.length} objeto(s) detectado(s)`);
+  };
+  img.src=URL.createObjectURL(file);$('fileInput').value='';
+});
+
+// ═══════════════════════════════════════════════════
+// ANALYTICS CHART
+// ═══════════════════════════════════════════════════
+function renderAnalytics(){
+  const chart=$('barChart');
+  const entries=Object.entries(classAcc);
+  if(!entries.length){chart.innerHTML='<div class="det-empty">Use o scanner para gerar dados</div>';return}
+  const max=Math.max(...entries.map(([,v])=>v.count));
+  chart.innerHTML='';
+  [...entries].sort((a,b)=>b[1].count-a[1].count).forEach(([cls,v])=>{
+    const col=getC(cls),pct=Math.round(v.count/max*100);
+    const row=document.createElement('div');row.className='bar-row';
+    row.innerHTML=`<div class="bar-label" title="${cls}">${cls}</div><div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${col}"></div></div><div class="bar-count">${v.count}</div>`;
+    chart.appendChild(row);
+  });
+
+  // Top objects
+  const top=$('topObjects');
+  top.innerHTML='';
+  [...entries].sort((a,b)=>b[1].count-a[1].count).slice(0,5).forEach(([cls,v],i)=>{
+    const col=getC(cls);
+    const avg=Math.round(v.total/v.count*100);
+    const d=document.createElement('div');
+    d.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)';
+    d.innerHTML=`<div style="font-family:var(--mono);font-size:.75rem;color:var(--text3);width:16px">${i+1}</div><div style="width:10px;height:10px;border-radius:50%;background:${col};box-shadow:0 0 8px ${col};flex-shrink:0"></div><div style="flex:1;font-weight:600;text-transform:capitalize;font-size:.85rem">${cls}</div><div style="font-family:var(--mono);font-size:.68rem;color:var(--text2)">${v.count}×</div><div style="font-family:var(--mono);font-size:.68rem;color:${col}">${avg}%</div>`;
+    top.appendChild(d);
+  });
+  if(!entries.length)top.innerHTML='<div class="det-empty">Sem dados</div>';
+}
+
+// ═══════════════════════════════════════════════════
+// CHECKLIST (NR-18)
+// ═══════════════════════════════════════════════════
+const CHECKS=[
+  'Estrutura montada conforme projeto aprovado',
+  'Travamentos e contraventamentos instalados',
+  'Plataformas de trabalho niveladas e seguras',
+  'Guarda-corpos instalados em todos os lados',
+  'Rodapés de proteção (tábuas) instalados',
+  'Acesso seguro (escadas ou rampas)',
+  'Capacidade de carga respeitada',
+  'Fixação adequada à edificação',
+  'Sinalização de segurança visível',
+  'EPI disponível para todos os trabalhadores',
+  'Proteção coletiva contra queda de objetos',
+  'Inspeção prévia realizada pelo responsável',
+];
+let checkedItems=new Set();
+
+function buildChecklist(){
+  const cl=$('checklist');
+  CHECKS.forEach((txt,i)=>{
+    const d=document.createElement('div');
+    d.className='check-item';d.dataset.idx=i;
+    d.innerHTML=`<div class="check-box">✓</div><div class="check-text">${txt}</div>`;
+    d.onclick=()=>{
+      if(checkedItems.has(i))checkedItems.delete(i);
+      else checkedItems.add(i);
+      d.classList.toggle('checked',checkedItems.has(i));
+    };
+    cl.appendChild(d);
+  });
+}
+
+// Risk selector
+document.querySelectorAll('.risk-opt').forEach(opt=>{
+  opt.addEventListener('click',()=>{
+    document.querySelectorAll('.risk-opt').forEach(o=>o.classList.remove('sel'));
+    opt.classList.add('sel');selectedRisk=opt.dataset.risk;
+  });
+});
+
+// ═══════════════════════════════════════════════════
+// PROJECTS
+// ═══════════════════════════════════════════════════
+function saveProject(){
+  const name=$('projName').value.trim();
+  if(!name){toast('Digite um nome',true);return}
+  const risk=lastDets.length?computeRisk(lastDets):'safe';
+  projects.push({id:Date.now(),name,date:new Date().toLocaleString('pt-BR'),dets:lastDets.length,frames:totalFrames,avg:sAvg.textContent,classes:Object.keys(classAcc).join(', ')||'-',risk});
+  $('projName').value='';renderProjects();toast('Projeto salvo ✓');
+}
+
+function renderProjects(){
+  const el=$('projList');
+  if(!projects.length){el.innerHTML='<div class="det-empty" style="margin-top:32px">Nenhum projeto salvo nesta sessão</div>';return}
+  el.innerHTML='';
+  [...projects].reverse().forEach(p=>{
+    const d=document.createElement('div');d.className='proj-card';
+    d.innerHTML=`
+      <button class="proj-del" onclick="delProj(${p.id})">✕</button>
+      <div class="proj-header">
+        <div class="proj-name">${p.name}</div>
+        <div class="proj-date">${p.date}</div>
+      </div>
+      <div class="proj-meta">
+        <div class="proj-tag">🎯 ${p.dets} detecções</div>
+        <div class="proj-tag">📊 ${p.frames} frames</div>
+        <div class="proj-tag">📈 ${p.avg}</div>
+        <div class="proj-risk ${p.risk}">${{safe:'✓ SEGURO',warn:'⚠ ATENÇÃO',danger:'✕ PERIGO'}[p.risk]}</div>
+      </div>
+      <div style="font-family:var(--mono);font-size:.58rem;color:var(--text3);margin-top:6px">Classes: ${p.classes}</div>
+    `;
+    el.appendChild(d);
+  });
+}
+function delProj(id){projects=projects.filter(p=>p.id!==id);renderProjects();toast('Removido')}
+
+// ═══════════════════════════════════════════════════
+// EXPORTS
+// ═══════════════════════════════════════════════════
+function exportPDF(){
+  const el=document.createElement('div');
+  el.style.cssText='font-family:Arial,sans-serif;padding:28px;color:#111;max-width:720px;line-height:1.6';
+  const rows=lastDets.map(d=>`<tr><td style="padding:6px 10px;border-bottom:1px solid #eee;text-transform:capitalize">${d.class}</td><td style="padding:6px 10px;border-bottom:1px solid #eee">${Math.round(d.score*100)}%</td><td style="padding:6px 10px;border-bottom:1px solid #eee">${d.bbox.map(v=>Math.round(v)).join(', ')}</td></tr>`).join('');
+  el.innerHTML=`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:16px;border-bottom:2px solid #00457a">
+      <div style="font-size:2rem">🏗</div>
+      <div><h1 style="color:#00457a;margin:0;font-size:1.4rem">ScaffVision AI Enterprise</h1><p style="color:#666;margin:0;font-size:.8rem">Relatório de Análise Computacional</p></div>
+      <div style="margin-left:auto;text-align:right;font-size:.75rem;color:#888">Gerado em:<br>${new Date().toLocaleString('pt-BR')}</div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+      <tr style="background:#f0f4f8"><th style="padding:8px 10px;text-align:left">Métrica</th><th style="padding:8px 10px;text-align:left">Valor</th></tr>
+      <tr><td style="padding:6px 10px;border-bottom:1px solid #eee">Modelo IA</td><td>COCO-SSD ${modelVariant.toUpperCase()}</td></tr>
+      <tr><td style="padding:6px 10px;border-bottom:1px solid #eee">Total de Frames Analisados</td><td>${totalFrames}</td></tr>
+      <tr><td style="padding:6px 10px;border-bottom:1px solid #eee">Total de Detecções (sessão)</td><td>${totalDets}</td></tr>
+      <tr><td style="padding:6px 10px;border-bottom:1px solid #eee">Classes Identificadas</td><td>${Object.keys(classAcc).join(', ')||'-'}</td></tr>
+      <tr><td style="padding:6px 10px;border-bottom:1px solid #eee">Confiança Média</td><td>${sAvg.textContent}</td></tr>
+      <tr><td style="padding:6px 10px;border-bottom:1px solid #eee">Nível de Risco (atual)</td><td style="text-transform:uppercase;font-weight:bold">${lastDets.length?computeRisk(lastDets):'-'}</td></tr>
+    </table>
+    ${lastDets.length?`<h2 style="color:#00457a;font-size:1rem;margin-bottom:8px">Detecções Atuais</h2><table style="width:100%;border-collapse:collapse"><tr style="background:#f0f4f8"><th style="padding:8px 10px;text-align:left">Classe</th><th style="padding:8px 10px;text-align:left">Confiança</th><th style="padding:8px 10px;text-align:left">BBox (x,y,w,h)</th></tr>${rows}</table>`:'<p style="color:#888">Nenhuma detecção ativa.</p>'}
+  `;
+  html2pdf().set({margin:10,filename:`scaffvision_analise_${Date.now()}.pdf`,html2canvas:{scale:2},jsPDF:{orientation:'portrait',unit:'mm',format:'a4'}}).from(el).save();
+  toast('PDF gerado ✓');
+}
+
+function exportInspectionPDF(){
+  const empresa=$('fEmpresa').value||'N/I';
+  const resp=$('fResp').value||'N/I';
+  const local=$('fLocal').value||'N/I';
+  const data=$('fData').value||new Date().toLocaleDateString('pt-BR');
+  const tipo=$('fTipo').value||'N/I';
+  const altura=$('fAltura').value||'N/I';
+  const obs=$('fObs').value||'-';
+  const total=CHECKS.length;
+  const ok=checkedItems.size;
+  const pct=Math.round(ok/total*100);
+  const riskLabel={safe:'SEGURO ✓',warn:'ATENÇÃO ⚠',danger:'PERIGO ✕','':'NÃO AVALIADO'}[selectedRisk];
+  const checkRows=CHECKS.map((c,i)=>`<tr><td style="padding:5px 10px;border-bottom:1px solid #eee">${c}</td><td style="padding:5px 10px;border-bottom:1px solid #eee;text-align:center;color:${checkedItems.has(i)?'#00aa66':'#cc3333'}">${checkedItems.has(i)?'✓ OK':'✗'}</td></tr>`).join('');
+  const detRows=lastDets.map(d=>`<tr><td style="padding:5px 10px;border-bottom:1px solid #eee;text-transform:capitalize">${d.class}</td><td style="padding:5px 10px;border-bottom:1px solid #eee">${Math.round(d.score*100)}%</td></tr>`).join('');
+
+  const el=document.createElement('div');
+  el.style.cssText='font-family:Arial,sans-serif;padding:28px;color:#111;max-width:720px;line-height:1.6';
+  el.innerHTML=`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:16px;border-bottom:3px solid #00457a">
+      <div style="font-size:2.5rem">🏗</div>
+      <div><h1 style="color:#00457a;margin:0">LAUDO DE INSPEÇÃO DE ANDAIMES</h1><p style="margin:0;color:#666;font-size:.85rem">NR-18 · ScaffVision AI Enterprise</p></div>
+    </div>
+    <h2 style="color:#00457a;font-size:1rem;margin-bottom:10px">DADOS DA INSPEÇÃO</h2>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+      <tr><td style="padding:5px 10px;background:#f8f9fa;border:1px solid #dde"><b>Empresa</b></td><td style="padding:5px 10px;border:1px solid #dde">${empresa}</td><td style="padding:5px 10px;background:#f8f9fa;border:1px solid #dde"><b>Responsável</b></td><td style="padding:5px 10px;border:1px solid #dde">${resp}</td></tr>
+      <tr><td style="padding:5px 10px;background:#f8f9fa;border:1px solid #dde"><b>Local/Obra</b></td><td style="padding:5px 10px;border:1px solid #dde">${local}</td><td style="padding:5px 10px;background:#f8f9fa;border:1px solid #dde"><b>Data</b></td><td style="padding:5px 10px;border:1px solid #dde">${data}</td></tr>
+      <tr><td style="padding:5px 10px;background:#f8f9fa;border:1px solid #dde"><b>Tipo de Andaime</b></td><td style="padding:5px 10px;border:1px solid #dde">${tipo}</td><td style="padding:5px 10px;background:#f8f9fa;border:1px solid #dde"><b>Altura Máx.</b></td><td style="padding:5px 10px;border:1px solid #dde">${altura} m</td></tr>
+    </table>
+    <h2 style="color:#00457a;font-size:1rem;margin-bottom:10px">CHECKLIST NR-18 — ${ok}/${total} (${pct}%)</h2>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+      <tr style="background:#00457a;color:#fff"><th style="padding:8px 10px;text-align:left">Item</th><th style="padding:8px 10px;text-align:center">Status</th></tr>
+      ${checkRows}
+    </table>
+    <h2 style="color:#00457a;font-size:1rem;margin-bottom:10px">AVALIAÇÃO DE RISCO IA</h2>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+      <tr><td style="padding:6px 10px;border-bottom:1px solid #eee"><b>Classificação Manual</b></td><td style="padding:6px 10px;border-bottom:1px solid #eee;font-weight:bold">${riskLabel}</td></tr>
+      <tr><td style="padding:6px 10px;border-bottom:1px solid #eee"><b>Risco por IA</b></td><td style="padding:6px 10px;border-bottom:1px solid #eee">${lastDets.length?computeRisk(lastDets).toUpperCase():'SEM DADOS'}</td></tr>
+      <tr><td style="padding:6px 10px;border-bottom:1px solid #eee"><b>Objetos Detectados (IA)</b></td><td style="padding:6px 10px;border-bottom:1px solid #eee">${lastDets.length}</td></tr>
+    </table>
+    ${lastDets.length?`<h2 style="color:#00457a;font-size:1rem;margin-bottom:10px">DETECÇÕES COMPUTACIONAIS</h2><table style="width:100%;border-collapse:collapse;margin-bottom:20px"><tr style="background:#00457a;color:#fff"><th style="padding:8px 10px;text-align:left">Classe</th><th style="padding:8px 10px;text-align:left">Confiança</th></tr>${detRows}</table>`:''}
+    <h2 style="color:#00457a;font-size:1rem;margin-bottom:10px">OBSERVAÇÕES</h2>
+    <div style="padding:12px;background:#f8f9fa;border:1px solid #dde;border-radius:4px;min-height:60px;margin-bottom:24px">${obs}</div>
+    <div style="margin-top:40px;display:grid;grid-template-columns:1fr 1fr;gap:40px">
+      <div style="border-top:1px solid #333;padding-top:8px;font-size:.8rem;color:#555">Assinatura do Responsável Técnico</div>
+      <div style="border-top:1px solid #333;padding-top:8px;font-size:.8rem;color:#555">Data e Carimbo</div>
+    </div>
+    <div style="margin-top:30px;font-size:.65rem;color:#999;text-align:center;border-top:1px solid #eee;padding-top:10px">
+      Laudo gerado automaticamente pelo ScaffVision AI Enterprise · ${new Date().toLocaleString('pt-BR')}
+    </div>
+  `;
+  html2pdf().set({margin:10,filename:`scaffvision_laudo_${Date.now()}.pdf`,html2canvas:{scale:2},jsPDF:{orientation:'portrait',unit:'mm',format:'a4'}}).from(el).save();
+  toast('Laudo PDF gerado ✓');
+}
+
+function exportJSON(){
+  const d={generated:new Date().toISOString(),model:`COCO-SSD ${modelVariant}`,session:{totalFrames,totalDets,classBreakdown:classAcc,riskHistory:riskLog},currentDetections:lastDets,projects};
+  dlBlob(JSON.stringify(d,null,2),'application/json',`scaffvision_${Date.now()}.json`);toast('JSON ✓');
+}
+function exportCSV(){
+  let csv='classe,confianca,x,y,width,height\n';
+  lastDets.forEach(d=>{const [x,y,w,h]=d.bbox;csv+=`${d.class},${Math.round(d.score*100)}%,${Math.round(x)},${Math.round(y)},${Math.round(w)},${Math.round(h)}\n`});
+  dlBlob(csv,'text/csv',`scaffvision_${Date.now()}.csv`);toast('CSV ✓');
+}
+function exportImage(){
+  const a=document.createElement('a');a.href=canvasEl.toDataURL('image/png');a.download=`scaffvision_${Date.now()}.png`;a.click();toast('PNG ✓');
+}
+function dlBlob(c,t,n){const b=new Blob([c],{type:t});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=n;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+
+// ═══════════════════════════════════════════════════
+// 3D VIEWER
+// ═══════════════════════════════════════════════════
+function init3D(){
+  const cv=$('canvas3d');
+  if(!cv||rend3d)return;
+  const W=cv.offsetWidth,H=cv.offsetHeight;
+  scene3d=new THREE.Scene();
+  scene3d.background=new THREE.Color(0x060810);
+  scene3d.fog=new THREE.Fog(0x060810,35,90);
+  cam3d=new THREE.PerspectiveCamera(45,W/H,.1,1000);
+  cam3d.position.set(10,10,10);cam3d.lookAt(0,0,0);
+  rend3d=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+  rend3d.setSize(W,H);rend3d.setPixelRatio(Math.min(devicePixelRatio,2));
+  rend3d.shadowMap.enabled=true;
+
+  scene3d.add(new THREE.AmbientLight(0xffffff,.35));
+  const pl=new THREE.PointLight(0x00e5ff,1.5,60);pl.position.set(8,14,8);scene3d.add(pl);
+  const pl2=new THREE.PointLight(0xff6d1f,.8,40);pl2.position.set(-8,6,-8);scene3d.add(pl2);
+  const pl3=new THREE.PointLight(0xa259ff,.5,30);pl3.position.set(0,20,0);scene3d.add(pl3);
+
+  const grid=new THREE.GridHelper(40,40,0x1e2d3d,0x131920);grid.position.y=-5.2;scene3d.add(grid);
+
+  buildScaff();
+  anim3D();
+
+  // Interaction
+  cv.addEventListener('mousedown',e=>{isDrag=true;prevMX=e.clientX;prevMY=e.clientY});
+  cv.addEventListener('mousemove',e=>{
+    if(isDrag&&scaffGrp){
+      scaffGrp.rotation.y+=(e.clientX-prevMX)*.008;
+      prevMX=e.clientX;prevMY=e.clientY;
+    }
+  });
+  cv.addEventListener('mouseup',()=>isDrag=false);
+  cv.addEventListener('wheel',e=>{
+    const f=e.deltaY>0?1.1:.9;
+    cam3d.position.multiplyScalar(f);
+    cam3d.position.clampLength(4,40);
+  },{passive:true});
+  // Touch
+  cv.addEventListener('touchstart',e=>{isDrag=true;prevMX=e.touches[0].clientX},{passive:true});
+  cv.addEventListener('touchmove',e=>{
+    if(isDrag&&scaffGrp){scaffGrp.rotation.y+=(e.touches[0].clientX-prevMX)*.01;prevMX=e.touches[0].clientX}
+  },{passive:true});
+  cv.addEventListener('touchend',()=>isDrag=false);
+
+  window.addEventListener('resize',()=>{
+    const nW=cv.offsetWidth,nH=cv.offsetHeight;
+    cam3d.aspect=nW/nH;cam3d.updateProjectionMatrix();rend3d.setSize(nW,nH);
+  });
+}
+
+function buildScaff(){
+  if(scaffGrp)scene3d.remove(scaffGrp);
+  scaffGrp=new THREE.Group();
+  const cols=5,rows=4,sp=2.2;
+  const pMat=new THREE.MeshStandardMaterial({color:0x00e5ff,metalness:.7,roughness:.25,emissive:0x003344,emissiveIntensity:.2});
+  const nMat=new THREE.MeshStandardMaterial({color:0xff6d1f,metalness:.5,roughness:.3});
+  const platMat=new THREE.MeshStandardMaterial({color:0x00f59b,transparent:true,opacity:.55,metalness:.1,roughness:.7});
+  const brMat=new THREE.MeshStandardMaterial({color:0x4d9fff,metalness:.6,roughness:.3});
+
+  for(let x=0;x<cols;x++)for(let z=0;z<rows;z++){
+    const px=(x-cols/2)*sp,pz=(z-rows/2)*sp;
+    const post=new THREE.Mesh(new THREE.CylinderGeometry(.07,.07,floors*2.2,16),pMat);
+    post.position.set(px,0,pz);scaffGrp.add(post);
+    for(let f=0;f<=floors;f++){
+      const nd=new THREE.Mesh(new THREE.SphereGeometry(.13,14,14),nMat);
+      nd.position.set(px,(f-floors/2)*2.2,pz);scaffGrp.add(nd);
+    }
+  }
+  for(let f=0;f<floors;f++){
+    const fy=(f-floors/2)*2.2;
+    for(let x=0;x<cols-1;x++)for(let z=0;z<rows-1;z++){
+      const plat=new THREE.Mesh(new THREE.BoxGeometry(sp-.12,.07,sp-.12),platMat);
+      plat.position.set((x-(cols-1)/2+.5)*sp,fy+1.1,(z-(rows-1)/2+.5)*sp);scaffGrp.add(plat);
+    }
+    // horizontal bars X direction
+    for(let x=0;x<cols-1;x++)for(let z=0;z<rows;z++){
+      const bar=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,sp-.1,8),brMat);
+      bar.rotation.z=Math.PI/2;bar.position.set((x-cols/2+.5)*sp,fy+1.1,(z-rows/2)*sp);scaffGrp.add(bar);
+    }
+    // Z direction
+    for(let x=0;x<cols;x++)for(let z=0;z<rows-1;z++){
+      const bar=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,sp-.1,8),brMat);
+      bar.rotation.x=Math.PI/2;bar.position.set((x-cols/2)*sp,fy+1.1,(z-rows/2+.5)*sp);scaffGrp.add(bar);
+    }
+  }
+  scene3d.add(scaffGrp);
+  $('viewerInfo').textContent=`Andares: ${floors} · Drag para girar · Scroll p/ zoom`;
+}
+
+function anim3D(){
+  requestAnimationFrame(anim3D);
+  if(rotating&&scaffGrp)scaffGrp.rotation.y+=.004;
+  rend3d.render(scene3d,cam3d);
+}
+function resetCam3D(){if(cam3d){cam3d.position.set(10,10,10);cam3d.lookAt(0,0,0)}if(scaffGrp)scaffGrp.rotation.y=0}
+function toggleRot(){rotating=!rotating;$('btnRot').textContent=rotating?'⏸ Pausar':'▶ Girar'}
+function addFloor(){floors=Math.min(floors+1,15);buildScaff();toast(`Andares: ${floors}`)}
+function removeFloor(){floors=Math.max(floors-1,2);buildScaff();toast(`Andares: ${floors}`)}
+
+// ═══════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════
+function setLive(on,label){
+  liveLabel.textContent=label;
+  on?liveDot.classList.add('on'):liveDot.classList.remove('on');
+}
+let toastT;
+function toast(msg,err=false){
+  const el=$('toast');
+  el.textContent=msg;
+  el.style.borderColor=err?'var(--red)':'var(--cyan)';
+  el.style.color=err?'var(--red)':'var(--cyan)';
+  el.classList.add('show');
+  clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove('show'),3000);
+}
+
+// ═══════════════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════════════
+document.querySelectorAll('.nav-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    const p=btn.dataset.panel;
+    document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(el=>el.classList.remove('active'));
+    btn.classList.add('active');
+    $('panel-'+p).classList.add('active');
+    if(p==='viewer3d')setTimeout(()=>init3D(),80);
+    if(p==='analytics')renderAnalytics();
+  });
+});
+
+// ═══════════════════════════════════════════════════
+// EVENTS
+// ═══════════════════════════════════════════════════
+threshSlider.addEventListener('input',()=>{threshold=threshSlider.value/100;threshVal.textContent=threshSlider.value+'%'});
+cameraSelect.addEventListener('change',()=>{if(detecting){stopCamera();setTimeout(startCamera,300)}});
+document.querySelectorAll('.chip').forEach(c=>{
+  c.addEventListener('click',()=>{
+    if(c.dataset.model===modelVariant)return;
+    document.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));
+    c.classList.add('active');modelVariant=c.dataset.model;
+    model=null;if(detecting)stopCamera();loadModel(modelVariant);
+  });
+});
+
+// ═══════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════
+$('fData').value=new Date().toISOString().split('T')[0];
+buildChecklist();
+(async()=>{await populateCams();await loadModel(modelVariant)})();
+</script>
+</body>
+</html>
